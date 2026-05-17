@@ -10,7 +10,16 @@ use crate::services::event_bus::EventBus;
 pub enum Msg {
     HandleMsg(String),
     SubmitMessage,
+    ToggleDarkMode,
+    ToggleEmoji,
+    AppendEmoji(String),
 }
+
+const EMOJIS: &[&str] = &[
+    "😄" , "☺️", "😂", "🤣", "😭",
+    "😆" , "🥺", "😍", "❤️", "👍",
+    "🙏" , "💪", "👋", "6️⃣", "7️⃣"
+];
 
 #[derive(Deserialize)]
 struct MessageData {
@@ -46,6 +55,9 @@ pub struct Chat {
     wss: WebsocketService,
     messages: Vec<MessageData>,
     _producer: Box<dyn Bridge<EventBus>>,
+    username: String,
+    dark_mode: bool,
+    show_emoji: bool,
 }
 
 impl Component for Chat {
@@ -80,6 +92,9 @@ impl Component for Chat {
             chat_input: NodeRef::default(),
             wss,
             _producer: EventBus::bridge(ctx.link().callback(Msg::HandleMsg)),
+            username: username.to_string(),
+            dark_mode: false,
+            show_emoji: false,
         }
     }
 
@@ -135,19 +150,45 @@ impl Component for Chat {
                 };
                 false
             }
+            Msg::ToggleDarkMode => {
+                self.dark_mode = !self.dark_mode;
+                true
+            }
+            Msg::ToggleEmoji => {
+                self.show_emoji = !self.show_emoji;
+                true
+            }
+            Msg::AppendEmoji(emoji) => {
+                let input = self.chat_input.cast::<HtmlInputElement>();
+                if let Some(input) = input {
+                    let current = input.value();
+                    input.set_value(&format!("{}{}", current, emoji));
+                }
+                false
+            }
         }
     }
 
     fn view(&self, ctx: &Context<Self>) -> Html {
         let submit = ctx.link().callback(|_| Msg::SubmitMessage);
+        let toggle_dark = ctx.link().callback(|_| Msg::ToggleDarkMode);
+        let toggle_emoji = ctx.link().callback(|_| Msg::ToggleEmoji);
+
+        let (bg_main, bg_sidebar, bg_user_card, border_color, bg_input, bg_msg_other, text_other, text_msg_other, bg_emoji_panel) =
+            if self.dark_mode {
+                ("bg-gray-900 text-white", "bg-gray-800 text-white", "bg-gray-700", "border-gray-700", "bg-gray-700 text-white placeholder-gray-400", "bg-gray-700", "text-gray-100", "text-gray-200", "bg-gray-800 border-gray-600")
+            } else {
+                ("bg-white text-gray-800", "bg-gray-100 text-gray-800", "bg-white", "border-gray-300", "bg-gray-100 text-gray-700", "bg-gray-100", "text-gray-800", "text-gray-600", "bg-white border-gray-200")
+            };
+
         html! {
-            <div class="flex w-screen">
-                <div class="flex-none w-56 h-screen bg-gray-100">
-                    <div class="text-xl p-3">{"Users"}</div>
+            <div class={format!("flex w-screen h-screen {}", bg_main)}>
+                <div class={format!("flex-none w-56 h-screen {}", bg_sidebar)}>
+                    <div class="text-xl p-3 font-semibold">{"Users"}</div>
                     {
                         self.users.clone().iter().map(|u| {
                             html!{
-                                <div class="flex m-3 bg-white rounded-lg p-2">
+                                <div class={format!("flex m-3 {} rounded-lg p-2", bg_user_card)}>
                                     <div>
                                         <img class="w-12 h-12 rounded-full" src={u.avatar.clone()} alt="avatar"/>
                                     </div>
@@ -165,35 +206,80 @@ impl Component for Chat {
                     }
                 </div>
                 <div class="grow h-screen flex flex-col">
-                    <div class="w-full h-14 border-b-2 border-gray-300"><div class="text-xl p-3">{"💬 Chat!"}</div></div>
-                    <div class="w-full grow overflow-auto border-b-2 border-gray-300">
+                    <div class={format!("w-full h-14 border-b-2 {} flex items-center justify-between px-4", border_color)}>
+                        <div class="text-xl font-semibold">{"💬 Chat!"}</div>
+                        <button onclick={toggle_dark} class="px-3 py-1 rounded-full text-sm font-medium bg-pink-500 text-white hover:bg-pink-600 transition-colors">
+                            { if self.dark_mode { "☀️ Light" } else { "🌙 Dark" } }
+                        </button>
+                    </div>
+                    <div class={format!("w-full grow overflow-auto border-b-2 {}", border_color)}>
                         {
                             self.messages.iter().map(|m| {
-                                let user = self.users.iter().find(|u| u.name == m.from).unwrap();
-                                html!{
-                                    <div class="flex items-end w-3/6 bg-gray-100 m-8 rounded-tl-lg rounded-tr-lg rounded-br-lg ">
-                                        <img class="w-8 h-8 rounded-full m-3" src={user.avatar.clone()} alt="avatar"/>
-                                        <div class="p-3">
-                                            <div class="text-sm">
-                                                {m.from.clone()}
-                                            </div>
-                                            <div class="text-xs text-gray-500">
-                                                if m.message.ends_with(".gif") {
-                                                    <img class="mt-3" src={m.message.clone()}/>
-                                                } else {
-                                                    {m.message.clone()}
-                                                }
+                                let is_self = m.from == self.username;
+                                let avatar = self.users.iter()
+                                    .find(|u| u.name == m.from)
+                                    .map(|u| u.avatar.clone())
+                                    .unwrap_or_default();
+
+                                if is_self {
+                                    html!{
+                                        <div class="flex flex-row-reverse items-end px-4 py-2">
+                                            <img class="w-8 h-8 rounded-full ml-3 flex-shrink-0" src={avatar} alt="avatar"/>
+                                            <div class="bg-pink-500 text-white p-3 rounded-tl-lg rounded-tr-lg rounded-bl-lg max-w-xs">
+                                                <div class="text-xs font-semibold mb-1 opacity-80">{"You"}</div>
+                                                <div class="text-sm">
+                                                    if m.message.ends_with(".gif") {
+                                                        <img class="mt-1 rounded" src={m.message.clone()}/>
+                                                    } else {
+                                                        {m.message.clone()}
+                                                    }
+                                                </div>
                                             </div>
                                         </div>
-                                    </div>
+                                    }
+                                } else {
+                                    html!{
+                                        <div class="flex items-end px-4 py-2">
+                                            <img class="w-8 h-8 rounded-full mr-3 flex-shrink-0" src={avatar} alt="avatar"/>
+                                            <div class={format!("{} p-3 rounded-tl-lg rounded-tr-lg rounded-br-lg max-w-xs", bg_msg_other)}>
+                                                <div class={format!("text-xs font-semibold mb-1 {}", text_other)}>
+                                                    {m.from.clone()}
+                                                </div>
+                                                <div class={format!("text-sm {}", text_msg_other)}>
+                                                    if m.message.ends_with(".gif") {
+                                                        <img class="mt-1 rounded" src={m.message.clone()}/>
+                                                    } else {
+                                                        {m.message.clone()}
+                                                    }
+                                                </div>
+                                            </div>
+                                        </div>
+                                    }
                                 }
                             }).collect::<Html>()
                         }
-
                     </div>
-                    <div class="w-full h-14 flex px-3 items-center">
-                        <input ref={self.chat_input.clone()} type="text" placeholder="Message" class="block w-full py-2 pl-4 mx-3 bg-gray-100 rounded-full outline-none focus:text-gray-700" name="message" required=true />
-                        <button onclick={submit} class="p-3 shadow-sm bg-blue-600 w-10 h-10 rounded-full flex justify-center items-center color-white">
+                    if self.show_emoji {
+                        <div class={format!("w-full p-2 border-b {} flex flex-wrap gap-1", bg_emoji_panel)}>
+                            {
+                                EMOJIS.iter().map(|e| {
+                                    let emoji = e.to_string();
+                                    let append = ctx.link().callback(move |_| Msg::AppendEmoji(emoji.clone()));
+                                    html!{
+                                        <button onclick={append} class="text-xl hover:bg-gray-200 hover:dark:bg-gray-600 rounded p-1 transition-colors">
+                                            {e.to_string()}
+                                        </button>
+                                    }
+                                }).collect::<Html>()
+                            }
+                        </div>
+                    }
+                    <div class="w-full h-14 flex px-3 items-center gap-2">
+                        <button onclick={toggle_emoji} class="text-2xl hover:scale-110 transition-transform flex-shrink-0" title="Emoji">
+                            {"😊"}
+                        </button>
+                        <input ref={self.chat_input.clone()} type="text" placeholder="Message" class={format!("block w-full py-2 pl-4 {} rounded-full outline-none", bg_input)} name="message" required=true />
+                        <button onclick={submit} class="p-3 shadow-sm bg-blue-600 w-10 h-10 rounded-full flex justify-center items-center flex-shrink-0">
                             <svg fill="#000000" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" class="fill-white">
                                 <path d="M0 0h24v24H0z" fill="none"></path><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"></path>
                             </svg>

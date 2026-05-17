@@ -27,11 +27,28 @@ pub fn login() -> Html {
     };
 
     html! {
-        <div class="bg-gray-800 flex w-screen">
-            <div class="container mx-auto flex flex-col justify-center items-center	">
-                <form class="m-4 flex">
-                    <input {oninput} class="rounded-l-lg p-4 border-t mr-0 border-b border-l text-gray-800 border-gray-200 bg-white" placeholder="Username"/>
-                    <Link<Route> to={Route::Chat}> <button {onclick} disabled={username.len()<1} class="px-8 rounded-r-lg bg-violet-600	  text-white font-bold p-4 uppercase border-violet-600 border-t border-b border-r" >{"Go Chatting!"}</button></Link<Route>>
+        <div class="bg-gray-900 min-h-screen flex w-screen">
+            <div class="container mx-auto flex flex-col justify-center items-center gap-6">
+                <div class="text-center">
+                    <div class="text-7xl mb-4">{"💬"}</div>
+                    <h1 class="text-4xl font-bold text-white mb-2">{"Welcome to YewChat"}</h1>
+                    <p class="text-gray-400 text-lg">{"Connect and chat with others in real time"}</p>
+                </div>
+                <form class="flex flex-col items-center gap-3 w-full max-w-sm px-4">
+                    <input
+                        {oninput}
+                        class="w-full rounded-lg px-4 py-3 border border-gray-600 bg-gray-800 text-white placeholder-gray-400 outline-none focus:border-pink-500 transition-colors"
+                        placeholder="Enter your username"
+                    />
+                    <Link<Route> to={Route::Chat}>
+                        <button
+                            {onclick}
+                            disabled={username.len()<1}
+                            class="w-64 px-8 py-3 rounded-lg bg-pink-500 text-white font-bold uppercase tracking-wide hover:bg-pink-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        >
+                            {"Go Chatting!"}
+                        </button>
+                    </Link<Route>>
                 </form>
             </div>
         </div>
